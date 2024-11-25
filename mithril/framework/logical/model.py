@@ -1424,7 +1424,7 @@ class Model(BaseModel):
 
         self.dependency_map.update_all_keys()
 
-        # Sort dag
+        # Sort and freeze dag
         self.dag = {m: self.dag[m] for m in self.get_models_in_topological_order()}
         if self.formula_key is not None:
             # Must be convertable to primitive.

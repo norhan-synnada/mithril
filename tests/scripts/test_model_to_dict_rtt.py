@@ -14,8 +14,6 @@
 
 import re
 
-import pytest
-
 import mithril
 from mithril import JaxBackend, TorchBackend
 from mithril.framework.common import TBD, IOKey
@@ -82,7 +80,6 @@ def test_linear_expose_set_shapes():
     )
 
 
-@pytest.mark.skip(reason="Dict conversion does not support extend from inputs yet")
 def test_linear_expose_set_shapes_extend_from_inputs():
     model = Model()
     lin_1 = Linear()
@@ -102,6 +99,28 @@ def test_linear_expose_set_shapes_extend_from_inputs():
     backend = JaxBackend(precision=64)
     assert_evaluations_equal(
         model, model_recreated, backend, static_keys={"input": backend.ones([4, 256])}
+    )
+
+
+def test_linear_expose_set_shapes_extend_from_inputs_2():
+    model = Model()
+    add_1 = Add()
+    add_2 = Add()
+    model += add_2(output=IOKey(name="output2"))
+    model += add_1(left="left1", output=add_2.left)
+    model.set_shapes({add_1.right: [1]})
+    model.set_shapes({add_2.left: [21]})
+    model_dict_created = dict_conversions.model_to_dict(model)
+    model_recreated = dict_conversions.dict_to_model(model_dict_created)
+    model_dict_recreated = dict_conversions.model_to_dict(model_recreated)
+
+    assert model_dict_created == model_dict_recreated
+    assert model.shapes == model_recreated.shapes
+    assert_models_equal(model, model_recreated)
+
+    backend = JaxBackend(precision=64)
+    assert_evaluations_equal(
+        model, model_recreated, backend, static_keys={"left1": backend.ones([21])}
     )
 
 
@@ -862,3 +881,75 @@ def test_make_shape_constrain():
     assert model.shapes == model_recreated.shapes
     assert_models_equal(model, model_recreated)
     TorchBackend.registered_primitives.pop("my_adder")
+
+
+def test_regular_extend_from_input_1():
+    model = Model()
+    model += Linear(10)(input="input0", w="w0", b="b0", output=IOKey(name="output"))
+    model += Linear(5)(input="input1", output="input0")
+
+    model_dict_created = dict_conversions.model_to_dict(model)
+    model_recreated = dict_conversions.dict_to_model(model_dict_created)
+    model_dict_recreated = dict_conversions.model_to_dict(model_recreated)
+
+    assert model_dict_created == model_dict_recreated
+    assert model.shapes == model_recreated.shapes
+    assert_models_equal(model, model_recreated)
+
+    backend = JaxBackend(precision=64)
+    assert_evaluations_equal(
+        model,
+        model_recreated,
+        backend,
+        static_keys={"input1": 2 * backend.ones([4, 256])},
+    )
+
+
+def test_regular_extend_from_input_2():
+    model = Model()
+    model += (lin := Linear(10))(
+        input="input0", w="w0", b="b0", output=IOKey(name="output")
+    )
+    model += Linear(5)(input="input1", output=lin.input)
+
+    model_dict_created = dict_conversions.model_to_dict(model)
+    model_recreated = dict_conversions.dict_to_model(model_dict_created)
+    model_dict_recreated = dict_conversions.model_to_dict(model_recreated)
+
+    assert model_dict_created == model_dict_recreated
+    assert model.shapes == model_recreated.shapes
+    assert_models_equal(model, model_recreated)
+
+    backend = JaxBackend(precision=64)
+    assert_evaluations_equal(
+        model,
+        model_recreated,
+        backend,
+        static_keys={"input1": 2 * backend.ones([4, 256])},
+    )
+
+
+def test_regular_extend_from_input_3():
+    model = Model()
+    model += (lin := Linear(10))(
+        input="input0", w="w0", b="b0", output=IOKey(name="output")
+    )
+    model += Linear(5)(
+        input="input1", output=Connect(lin.input, key=IOKey(name="input0"))
+    )
+
+    model_dict_created = dict_conversions.model_to_dict(model)
+    model_recreated = dict_conversions.dict_to_model(model_dict_created)
+    model_dict_recreated = dict_conversions.model_to_dict(model_recreated)
+
+    assert model_dict_created == model_dict_recreated
+    assert model.shapes == model_recreated.shapes
+    assert_models_equal(model, model_recreated)
+
+    backend = JaxBackend(precision=64)
+    assert_evaluations_equal(
+        model,
+        model_recreated,
+        backend,
+        static_keys={"input1": 2 * backend.ones([4, 256])},
+    )
